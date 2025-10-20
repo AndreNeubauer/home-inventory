@@ -1,0 +1,117 @@
+-- enable RLS
+alter table items enable row level security;
+
+-- allow household members to SELECT
+create policy "household members can select items" on items
+for select using (
+  exists (
+    select 1 from household_members hm
+    where hm.household_id = items.household_id
+      and hm.user_id = auth.uid()
+  )
+);
+
+-- allow household members to insert
+create policy "household members can insert items" on items
+for insert with check (
+  exists (
+    select 1 from household_members hm
+    where hm.household_id = items.household_id
+      and hm.user_id = auth.uid()
+  )
+);
+
+-- allow household members to update/delete
+create policy "household members can modify items" on items
+for update, delete using (
+  exists (
+    select 1 from household_members hm
+    where hm.household_id = items.household_id
+      and hm.user_id = auth.uid()
+  )
+);
+-- Enable trigram extension for later fuzzy search (one-time)
+create extension if not exists pg_trgm;
+
+-- households and members
+create table households (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_at timestamptz default now()
+);
+
+create table household_members (
+  household_id uuid references households(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
+  role text default 'member',
+  added_at timestamptz default now(),
+  primary key (household_id, user_id)
+);
+
+-- containers (optional)
+create table containers (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households(id) on delete cascade,
+  name text not null,
+  type text default 'container',
+  parent_container_id uuid references containers(id),
+  created_at timestamptz default now()
+);
+
+-- items
+create table items (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households(id),
+  container_id uuid references containers(id),
+  name text not null,
+  category text,
+  tags text[],
+  quantity int default 0,
+  min_quantity int default 0,
+  unit text,
+  type text default 'consumable',
+  expiration_date date,
+  on_sale boolean default false,
+  image_url text,
+  notes text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- synonyms for receipt mapping
+create table synonyms (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households(id),
+  synonym text not null,
+  canonical_item_id uuid references items(id),
+  created_at timestamptz default now()
+);
+
+-- shopping list
+create table shopping_list (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households(id),
+  item_name text,
+  quantity int default 1,
+  created_by uuid references auth.users(id),
+  added_at timestamptz default now(),
+  checked boolean default false
+);
+
+-- invitation (optional)
+create table household_invitations (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references households(id),
+  email text,
+  code text,
+  status text default 'pending',
+  created_at timestamptz default now()
+);
+
+-- RPC helper to increment quantity atomically
+create or replace function increment_item_quantity(p_item_id uuid, p_amount integer)
+returns void as $$
+begin
+  update items set quantity = coalesce(quantity,0) + p_amount, updated_at = now() where id = p_item_id;
+end;
+$$ language plpgsql;
