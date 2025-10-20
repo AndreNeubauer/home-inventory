@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
-import HouseholdControls from "../../components/HouseholdControls";
+// HouseholdControls not used here; nav provides selector
 import ShoppingList from "../../components/ShoppingList";
 import AppNav from "../../components/AppNav";
 

@@ -26,7 +26,7 @@ export default function ManagePage() {
       .from("household_members")
       .select("household_id")
       .eq("user_id", uid);
-    const ids = (memberRows || []).map((r: any) => r.household_id).filter(Boolean);
+    const ids = (memberRows || []).map((r: { household_id: string | null }) => r.household_id).filter((id): id is string => Boolean(id));
     if (ids.length === 0) { setHouseholds([]); return; }
     const { data: hs } = await supabase
       .from("households")
