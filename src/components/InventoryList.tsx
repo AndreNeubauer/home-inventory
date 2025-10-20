@@ -150,7 +150,7 @@ function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Pr
     const quantity = qty && qty > 0 ? qty : 1;
     // household_id is foreign on items; fetch item row to get it
     const { data } = await supabase.from("items").select("household_id").eq("id", id).maybeSingle();
-    const householdId = (data as any)?.household_id;
+    const householdId = (data as { household_id: string } | null)?.household_id;
     if (householdId) {
       await supabase.from("shopping_list").insert([{ household_id: householdId, item_name: name, quantity }]);
     }

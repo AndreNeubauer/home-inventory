@@ -71,7 +71,7 @@ export default function ShoppingList({ householdId, initialItems, onCompleted }:
       .limit(1);
 
     if (existing && existing.length > 0) {
-      const current = existing[0] as any;
+      const current = existing[0] as { id: string; quantity: number | null; tags: string[] | null };
       const mergedTags = Array.from(new Set([...(current.tags || []), ...tags]));
       await supabase
         .from("items")
