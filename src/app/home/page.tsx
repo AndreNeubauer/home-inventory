@@ -4,10 +4,7 @@ import { useRouter } from "next/navigation";
 import ShoppingList from "../../components/ShoppingList";
 import InventoryList from "../../components/InventoryList";
 import NameInventoryForm from "../../components/NameInventoryForm";
-import HouseholdControls from "../../components/HouseholdControls";
 import HouseholdManager from "../../components/HouseholdManager";
-import ContainerManager from "../../components/ContainerManager";
-import GroupManager from "../../components/GroupManager";
 import AppNav from "../../components/AppNav";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
@@ -22,6 +19,13 @@ type Item = {
 type Household = {
   id: string;
   name: string;
+};
+
+type Container = {
+  id: string;
+  name: string;
+  location: string | null;
+  color?: string | null;
 };
 
 export default function Home() {
@@ -41,6 +45,8 @@ export default function Home() {
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingShopping, setLoadingShopping] = useState(true);
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [loadingContainers, setLoadingContainers] = useState(true);
 
   const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
@@ -98,6 +104,7 @@ export default function Home() {
     if (!householdId || !sessionUser) return;
     loadItems(householdId, debounced);
     loadShopping(householdId);
+    loadContainers(householdId);
   }, [householdId, debounced, sessionUser]);
 
   // ensure fresh shopping list when switching to the tab
@@ -233,6 +240,17 @@ export default function Home() {
     setLoadingShopping(false);
   };
 
+  const loadContainers = async (hid: string) => {
+    setLoadingContainers(true);
+    const { data } = await supabase
+      .from("containers")
+      .select("id,name,location,color")
+      .eq("household_id", hid)
+      .order("name");
+    setContainers((data || []) as Container[]);
+    setLoadingContainers(false);
+  };
+
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!householdId || !newItemName.trim()) return;
@@ -288,17 +306,7 @@ export default function Home() {
               </div>
             )}
           />
-          <div className="flex items-center justify-end">
-            <button type="button" onClick={signOut} className="px-3 py-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 font-medium transition">Sign out</button>
-          </div>
-          <HouseholdControls
-            households={households}
-            householdId={householdId}
-            onChange={(val) => {
-              setHouseholdId(val);
-              if (val && typeof window !== "undefined") localStorage.setItem("current_household_id", val);
-            }}
-          />
+          
           
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <label className="block text-sm mb-1 text-gray-800">Search</label>
@@ -310,7 +318,7 @@ export default function Home() {
             />
           </div>
           {activeTab === "inventory" && householdId && (
-            loadingItems ? (
+            (loadingItems || loadingContainers) ? (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                 <div className="animate-pulse space-y-3">
                   <div className="h-4 bg-gray-200 rounded w-1/3"></div>
@@ -320,14 +328,8 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              <InventoryList householdId={householdId} initialItems={items} refreshSignal={refreshKey} />
+              <InventoryList householdId={householdId} initialItems={items} initialContainers={containers} refreshSignal={refreshKey} />
             )
-          )}
-          {activeTab === "containers" && householdId && (
-            <ContainerManager householdId={householdId} initialContainers={[]} />
-          )}
-          {activeTab === "groups" && householdId && (
-            <GroupManager householdId={householdId} initialGroups={[]} />
           )}
           {activeTab === "manage" && (
             <HouseholdManager inventories={households} onChanged={async () => { if (sessionUser) await loadHouseholds(sessionUser.id); }} />

@@ -2,12 +2,23 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import HouseholdManager from "../../components/HouseholdManager";
+import AppNav from "../../components/AppNav";
 
 type Household = { id: string; name: string };
 
 export default function ManagePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [households, setHouseholds] = useState<Household[]>([]);
+  const signOut = async () => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("current_household_id");
+      }
+      await supabase.auth.signOut();
+      window.location.assign("/");
+    } catch {}
+  };
+  
 
   useEffect(() => {
     const init = async () => {
@@ -38,7 +49,31 @@ export default function ManagePage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-2xl w-full mx-auto flex flex-col gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Manage Inventories</h1>
+        <AppNav
+          inventoryName={households.find(h => h.id === userId) ? households.find(h => h.id === userId)?.name : undefined}
+          subtitle="Manage"
+          active="home"
+          selector={(
+            <div className="min-w-[180px]">
+              <select
+                value={/* use current selection if present */ (typeof window !== 'undefined' ? (localStorage.getItem('current_household_id') || '') : '')}
+                onChange={e => {
+                  const val = e.target.value || null;
+                  if (val && typeof window !== 'undefined') localStorage.setItem('current_household_id', val);
+                  // trigger reloads if needed
+                }}
+                className="border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-900"
+              >
+                {households.map(h => (
+                  <option key={h.id} value={h.id}>{h.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        />
+        <div className="flex items-center justify-end">
+          <button type="button" onClick={signOut} className="px-3 py-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 font-medium transition">Sign out</button>
+        </div>
         {userId ? (
           <HouseholdManager inventories={households} onChanged={() => loadHouseholds(userId)} />
         ) : (

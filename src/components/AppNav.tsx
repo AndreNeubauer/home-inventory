@@ -1,5 +1,5 @@
 "use client";
-export default function AppNav({ inventoryName, subtitle, active, selector }: { inventoryName?: string; subtitle?: string; active: 'home' | 'shopping' | 'containers' | 'groups'; selector?: React.ReactNode }) {
+export default function AppNav({ inventoryName, subtitle, active, selector }: { inventoryName?: string; subtitle?: string; active: 'home' | 'shopping' | 'containers'; selector?: React.ReactNode }) {
   return (
     <>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
@@ -16,7 +16,6 @@ export default function AppNav({ inventoryName, subtitle, active, selector }: { 
         <a href="/home" className={`px-4 py-2 rounded-lg font-medium ${active === 'home' ? 'bg-blue-600 text-white' : 'text-gray-800 hover:bg-gray-100'}`}>Inventory</a>
         <a href="/shopping" className={`px-4 py-2 rounded-lg font-medium ${active === 'shopping' ? 'bg-blue-600 text-white' : 'text-gray-800 hover:bg-gray-100'}`}>Shopping</a>
         <a href="/containers" className={`px-4 py-2 rounded-lg font-medium ${active === 'containers' ? 'bg-blue-600 text-white' : 'text-gray-800 hover:bg-gray-100'}`}>Containers</a>
-        <a href="/groups" className={`px-4 py-2 rounded-lg font-medium ${active === 'groups' ? 'bg-blue-600 text-white' : 'text-gray-800 hover:bg-gray-100'}`}>Groups</a>
       </div>
     </>
   );

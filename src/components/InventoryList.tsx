@@ -2,41 +2,71 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
-type Item = { id: string; name: string; quantity: number | null; tags?: string[]; group_id?: string | null };
-type Group = { id: string; name: string };
+type Item = { id: string; name: string; quantity: number | null; tags?: string[]; container_id?: string | null };
+type Container = { id: string; name: string; location?: string | null; color?: string | null };
 
-export default function InventoryList({ householdId, initialItems, refreshSignal }: { householdId: string; initialItems: Item[]; refreshSignal?: number }) {
+function colorFromId(id: string): string {
+  // Simple hash to hue
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 85%, 92%)`;
+}
+
+export default function InventoryList({ householdId, initialItems, initialContainers, refreshSignal }: { householdId: string; initialItems: Item[]; initialContainers?: Container[]; refreshSignal?: number }) {
   const [items, setItems] = useState<Item[]>(initialItems);
   const [name, setName] = useState("");
   const [qty, setQty] = useState<number>(1);
-  const [groupId, setGroupId] = useState<string>("");
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [filterGroupId, setFilterGroupId] = useState<string>("");
+  const [containerId, setContainerId] = useState<string>("");
+  const [containers, setContainers] = useState<Container[]>(initialContainers || []);
+  const [filterContainerId, setFilterContainerId] = useState<string>("");
+  const [addTags, setAddTags] = useState<string>("");
+  const [existingTags, setExistingTags] = useState<string[]>([]);
 
   const reload = async () => {
     let query = supabase
       .from("items")
-      .select("id,name,quantity,tags,group_id")
+      .select("id,name,quantity,tags,container_id")
       .eq("household_id", householdId)
       .order("name");
-    if (filterGroupId) {
-      query = query.eq("group_id", filterGroupId);
+    if (filterContainerId) {
+      query = query.eq("container_id", filterContainerId);
     }
     const { data } = await query;
     setItems(data || []);
   };
-  const reloadGroups = async () => {
+  const reloadContainers = async () => {
     const { data } = await supabase
-      .from("groups")
-      .select("id,name")
+      .from("containers")
+      .select("id,name,location,color")
       .eq("household_id", householdId)
       .order("name");
-    setGroups((data || []) as Group[]);
+    setContainers((data || []) as Container[]);
   };
   useEffect(() => {
-    reloadGroups();
+    reloadContainers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId]);
+
+  useEffect(() => {
+    if (initialContainers && initialContainers.length) {
+      setContainers(initialContainers);
+    }
+  }, [initialContainers]);
+
+  // derive existing tags from current items
+  useEffect(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      if (it.tags) {
+        for (const t of it.tags) set.add(t);
+      }
+    }
+    setExistingTags(Array.from(set).sort((a, b) => a.localeCompare(b)));
+  }, [items]);
   // live updates with cleanup
   useEffect(() => {
     if (!householdId) return;
@@ -50,10 +80,15 @@ export default function InventoryList({ householdId, initialItems, refreshSignal
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    await supabase.from("items").insert([{ household_id: householdId, name: name.trim(), quantity: qty, group_id: groupId || null }]);
+    const tags = addTags
+      .split(",")
+      .map(t => t.trim())
+      .filter(Boolean);
+    await supabase.from("items").insert([{ household_id: householdId, name: name.trim(), quantity: qty, container_id: containerId || null, tags }]);
     setName("");
     setQty(1);
-    setGroupId("");
+    setContainerId("");
+    setAddTags("");
     await reload();
   };
 
@@ -61,16 +96,16 @@ export default function InventoryList({ householdId, initialItems, refreshSignal
     <div className="flex flex-col gap-3">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-800">Filter by group</label>
-          <select value={filterGroupId} onChange={e => { setFilterGroupId(e.target.value); void reload(); }} className="border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-900">
+          <label className="text-sm text-gray-800">Filter by container</label>
+          <select value={filterContainerId} onChange={e => { setFilterContainerId(e.target.value); void reload(); }} className="border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-900">
             <option value="">All</option>
-            {groups.map(g => (
-              <option key={g.id} value={g.id}>{g.name}</option>
+            {containers.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
       </div>
-      <form onSubmit={add} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+      <form onSubmit={add} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 grid grid-cols-1 sm:grid-cols-6 gap-3 items-end">
         <div className="flex-1">
           <label className="block text-sm mb-1 text-gray-800">Item name</label>
           <input value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 rounded-lg px-3 py-2 bg-white outline-none transition text-gray-900 placeholder-gray-600" placeholder="e.g. Ketchup" required />
@@ -80,35 +115,50 @@ export default function InventoryList({ householdId, initialItems, refreshSignal
           <input type="number" min={1} value={qty} onChange={e => setQty(Number(e.target.value) || 1)} className="w-24 border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 rounded-lg px-3 py-2 bg-white outline-none transition text-gray-900" />
         </div>
         <div>
-          <label className="block text-sm mb-1 text-gray-800">Group</label>
-          <select value={groupId} onChange={e => setGroupId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900">
+          <label className="block text-sm mb-1 text-gray-800">Container</label>
+          <select value={containerId} onChange={e => setContainerId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900">
             <option value="">None</option>
-            {groups.map(g => (
-              <option key={g.id} value={g.id}>{g.name}</option>
+            {containers.map(c => (
+              <option key={c.id} value={c.id}>{c.name}{c.location ? ` — ${c.location}` : ''}</option>
             ))}
           </select>
         </div>
+        <div className="sm:col-span-2">
+          <label className="block text-sm mb-1 text-gray-800">Tags (comma separated)</label>
+          <input
+            list="tag-options"
+            value={addTags}
+            onChange={e => setAddTags(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900"
+            placeholder="e.g. pantry, canned"
+          />
+          <datalist id="tag-options">
+            {existingTags.map(tag => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
+        </div>
         <button type="submit" className="h-[40px] px-4 rounded-md bg-green-600 text-white font-semibold hover:bg-green-700 transition">Add</button>
       </form>
-      <EditableList items={items} onUpdated={reload} />
+      <EditableList items={items} onUpdated={reload} containers={containers} />
     </div>
   );
 }
 
-function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Promise<void> | void }) {
+function EditableList({ items, onUpdated, containers: allContainers }: { items: Item[]; onUpdated: () => Promise<void> | void; containers: Container[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editQty, setEditQty] = useState<number>(1);
   const [editTags, setEditTags] = useState("");
-  const [editGroupId, setEditGroupId] = useState<string>("");
-  const [groups, setGroups] = useState<Group[]>([]);
+  const [editContainerId, setEditContainerId] = useState<string>("");
+  const [containersLocal, setContainersLocal] = useState<Container[]>(allContainers);
 
   useEffect(() => {
     const load = async () => {
       // derive household from any item if available by joining? Not available here; rely on selection form setting earlier component state.
       // As a fallback, just load all groups user can see (will be scoped by RLS to their households).
-      const { data } = await supabase.from('groups').select('id,name').order('name');
-      setGroups((data || []) as Group[]);
+      const { data } = await supabase.from('containers').select('id,name,location,color').order('name');
+      setContainersLocal((data || []) as Container[]);
     };
     load();
   }, []);
@@ -119,7 +169,7 @@ function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Pr
     setEditName(item.name);
     setEditQty(item.quantity ?? 1);
     setEditTags((item.tags || []).join(", "));
-    setEditGroupId(item.group_id || "");
+    setEditContainerId(item.container_id || "");
   };
 
   const cancel = () => {
@@ -134,7 +184,7 @@ function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Pr
       .split(",")
       .map(t => t.trim())
       .filter(Boolean);
-    await supabase.from("items").update({ name: editName.trim(), quantity: editQty, tags, group_id: editGroupId || null }).eq("id", id);
+    await supabase.from("items").update({ name: editName.trim(), quantity: editQty, tags, container_id: editContainerId || null }).eq("id", id);
     cancel();
     await onUpdated();
   };
@@ -161,8 +211,14 @@ function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Pr
 
   return (
     <ul className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-200">
-      {items.map(it => (
-          <li key={it.id} className="px-4 py-3">
+      {items
+        .slice()
+        .sort((a, b) => (a.container_id || '') .localeCompare(b.container_id || '') || a.name.localeCompare(b.name))
+        .map(it => {
+          const c = (allContainers.length ? allContainers : containersLocal).find(c => c.id === it.container_id);
+          const bg = c?.color || (it.container_id ? colorFromId(it.container_id) : undefined);
+          return (
+        <li key={it.id} className="px-4 py-3" style={bg ? { backgroundColor: bg } : undefined}>
           {editingId === it.id ? (
             <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
               <div className="flex-1">
@@ -175,14 +231,20 @@ function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Pr
               </div>
               <div className="flex-1">
                 <label className="block text-sm mb-1 text-gray-800">Tags (comma separated)</label>
-                <input value={editTags} onChange={e => setEditTags(e.target.value)} className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 rounded-lg px-3 py-2 bg-white outline-none transition text-gray-900 placeholder-gray-600" placeholder="e.g. pantry, canned" />
+                <input
+                  list="tag-options"
+                  value={editTags}
+                  onChange={e => setEditTags(e.target.value)}
+                  className="w-full border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 rounded-lg px-3 py-2 bg-white outline-none transition text-gray-900 placeholder-gray-600"
+                  placeholder="e.g. pantry, canned"
+                />
               </div>
               <div>
-                <label className="block text-sm mb-1 text-gray-800">Group</label>
-                <select value={editGroupId} onChange={e => setEditGroupId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900">
+                <label className="block text-sm mb-1 text-gray-800">Container</label>
+                <select value={editContainerId} onChange={e => setEditContainerId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900">
                   <option value="">None</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
+                  {(allContainers.length ? allContainers : containersLocal).map(cc => (
+                    <option key={cc.id} value={cc.id}>{cc.name}{cc.location ? ` — ${cc.location}` : ''}</option>
                   ))}
                 </select>
               </div>
@@ -196,15 +258,8 @@ function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Pr
               <div>
                 <div className="text-gray-900 font-medium">{it.name}</div>
                 <div className="text-sm text-gray-700">Qty: {it.quantity ?? 0}</div>
-                {it.group_id && (
-                  <div className="text-xs text-gray-600">Group: { /* will be replaced by name via lookup below */ }
-                    { /* simple inline lookup */ }
-                    {(() => {
-                      // this inline IIFE finds group name
-                      const g = groups.find(g => g.id === it.group_id);
-                      return g ? g.name : '—';
-                    })()}
-                  </div>
+                {it.container_id && (
+                  <div className="text-xs text-gray-600">Container: {c ? (c.location ? `${c.name} — ${c.location}` : c.name) : '—'}</div>
                 )}
                 {it.tags && it.tags.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
@@ -231,7 +286,8 @@ function EditableList({ items, onUpdated }: { items: Item[]; onUpdated: () => Pr
             </div>
           )}
         </li>
-      ))}
+          );
+        })}
       {items.length === 0 && (
         <li className="px-4 py-4 text-gray-700">No items yet — add your first one!</li>
       )}

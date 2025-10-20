@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
-import HouseholdControls from "../../components/HouseholdControls";
 import AppNav from "../../components/AppNav";
 import ContainerManager from "../../components/ContainerManager";
 
@@ -84,14 +83,6 @@ export default function ContainersPage() {
               </select>
             </div>
           )}
-        />
-        <HouseholdControls
-          households={households}
-          householdId={householdId}
-          onChange={(val) => {
-            setHouseholdId(val);
-            if (val && typeof window !== "undefined") localStorage.setItem("current_household_id", val);
-          }}
         />
         {householdId ? (
           <ContainerManager householdId={householdId} initialContainers={containers} />
